@@ -9,9 +9,9 @@ public:
     Xk_.resize(3);
   }
 
-  virtual Eigen::VectorXd
-  computeModelFromPosition(const Eigen::VectorXd state,
-                           const Eigen::VectorXd input) override {
+  virtual Eigen::VectorXd computeModelFromPosition(const Eigen::VectorXd &state,
+                                                   const Eigen::VectorXd &input,
+                                                   double dt = 0.001) override {
 
     Eigen::VectorXd state_next = state;
     double px = state(0);
@@ -26,18 +26,13 @@ public:
     state_next(1) = py + ds * std::sin(theta + dtheta * 0.5);
     state_next(2) = theta + dtheta;
 
-    while (state_next(2) > M_PI) {
-      state_next(2) -= 2.0 * M_PI;
-    }
-    while (state_next(2) < -M_PI) {
-      state_next(2) += 2.0 * M_PI;
-    }
+    wrapAngle(state_next(2));
 
     return state_next;
   }
 
-  virtual Eigen::VectorXd
-  computeAndUpdate(const Eigen::VectorXd &input) override {
+  virtual Eigen::VectorXd computeAndUpdate(const Eigen::VectorXd &input,
+                                           double dt = 0.001) override {
     if (initialized_) {
       update(input);
     }
@@ -65,27 +60,56 @@ public:
     return Xk_;
   }
 
+  virtual Eigen::MatrixXd stateJacobian(const Eigen::VectorXd &state,
+                                        const Eigen::VectorXd &input,
+                                        double dt = 0.001) const override {
+    double theta = state(2);
+    double ds = input(0);
+    double dtheta = input(1);
+
+    double theta_mid = theta + 0.5 * dtheta;
+
+    Eigen::Matrix3d F;
+
+    F << 1.0, 0.0, -ds * std::sin(theta_mid), 0.0, 1.0,
+        ds * std::cos(theta_mid), 0.0, 0.0, 1.0;
+
+    return F;
+  }
+
+  virtual Eigen::MatrixXd inputJacobian(const Eigen::VectorXd &state,
+                                        const Eigen::VectorXd &input,
+                                        double dt = 0.001) const override {
+    double theta = state(2);
+    double ds = input(0);
+    double dtheta = input(1);
+
+    double theta_mid = theta + 0.5 * dtheta;
+
+    Eigen::Matrix<double, 3, 2> G;
+
+    G << std::cos(theta_mid), -0.5 * ds * std::sin(theta_mid),
+
+        std::sin(theta_mid), 0.5 * ds * std::cos(theta_mid),
+
+        0.0, 1.0;
+
+    return G;
+  }
+
 private:
-  virtual void update(const Eigen::VectorXd &pos) override {
+  virtual void update(const Eigen::VectorXd &input) override {
 
     // Compute translation delta
-    double ds = pos(0);
-    double dtheta = pos(1);
+    double ds = input(0);
+    double dtheta = input(1);
 
     // fixing angle
-    while (dtheta > M_PI) {
-      dtheta -= 2.0 * M_PI;
-    }
-    while (dtheta < -M_PI) {
-      dtheta += 2.0 * M_PI;
-    }
+    wrapAngle(dtheta);
 
     delta_(0) = ds;
     delta_(1) = dtheta;
   }
-
-  virtual Eigen::MatrixXd stateJacobian() const {}
-  virtual Eigen::MatrixXd inputJacobian() const {}
 };
 
 #endif
