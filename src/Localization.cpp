@@ -1,6 +1,6 @@
 #include "localization/Localization.h"
 #include "localization/UnscentedKF.h"
-#include "localization/models/DiffDriveModel.hpp"
+#include "localization/models/IncrementalModel.hpp"
 
 Localization::Localization(ros::NodeHandle &nh)
     : nh_(nh), has_last_pose_(false), last_time_(0.0) {
@@ -36,7 +36,7 @@ Localization::Localization(ros::NodeHandle &nh)
   ROS_INFO("Parameter initial_pose = [%.6f, %.6f, %.6f]", initial_pose[0],
            initial_pose[1], initial_pose[2]);
 
-  model_ = std::make_shared<DiffDriveModel>();
+  model_ = std::make_shared<IncrementalModel>();
   Eigen::VectorXd init_pose(3);
   init_pose << initial_pose[0], initial_pose[1], initial_pose[2];
   model_->init(init_pose);
@@ -118,8 +118,8 @@ void Localization::arucoCallback(
 
   for (size_t i = 0; i < msg->markers.size(); ++i) {
     const auto &m = msg->markers[i];
-    //ROS_INFO("marker[%zu] id=%u dist=%.6f theta=%.6f phi=%.6f", i, m.id,
-    //         m.distance, m.theta, m.phi);
+    // ROS_INFO("marker[%zu] id=%u dist=%.6f theta=%.6f phi=%.6f", i, m.id,
+    //          m.distance, m.theta, m.phi);
   }
 
   std::lock_guard<std::mutex> lock(buffer_mutex_);

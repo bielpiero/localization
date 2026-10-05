@@ -1,25 +1,25 @@
-#ifndef DIFF_DRIVE_MODEL_HPP
-#define DIFF_DRIVE_MODEL_HPP
+#ifndef INCREMENTAL_MODEL_HPP
+#define INCREMENTAL_MODEL_HPP
 
 #include "BaseModel.hpp"
-class DiffDriveModel : public BaseModel {
+class IncrementalModel : public BaseModel {
 public:
-  DiffDriveModel() {
+  IncrementalModel() {
     delta_.resize(2);
     Xk_.resize(3);
   }
 
   virtual Eigen::VectorXd
   computeModelFromPosition(const Eigen::VectorXd state,
-                           const Eigen::VectorXd increment) override {
-    
+                           const Eigen::VectorXd input) override {
+
     Eigen::VectorXd state_next = state;
     double px = state(0);
     double py = state(1);
     double theta = state(2);
     // COntrol de incrementos
-    double ds = increment(0);
-    double dtheta = increment(1);
+    double ds = input(0);
+    double dtheta = input(1);
 
     // Predict new state
     state_next(0) = px + ds * std::cos(theta + dtheta * 0.5);
@@ -37,9 +37,9 @@ public:
   }
 
   virtual Eigen::VectorXd
-  computeAndUpdate(const Eigen::VectorXd &increment) override {
+  computeAndUpdate(const Eigen::VectorXd &input) override {
     if (initialized_) {
-      update(increment);
+      update(input);
     }
 
     double ds = delta_(0);
@@ -54,12 +54,7 @@ public:
     double theta_new = Xk_(2) + dtheta;
 
     // Normalize heading
-    while (theta_new > M_PI) {
-      theta_new -= 2.0 * M_PI;
-    }
-    while (theta_new < -M_PI) {
-      theta_new += 2.0 * M_PI;
-    }
+    wrapAngle(theta_new);
 
     last_pose_ = Xk_;
 
@@ -88,6 +83,9 @@ private:
     delta_(0) = ds;
     delta_(1) = dtheta;
   }
+
+  virtual Eigen::MatrixXd stateJacobian() const {}
+  virtual Eigen::MatrixXd inputJacobian() const {}
 };
 
 #endif

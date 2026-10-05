@@ -10,9 +10,8 @@ public:
   virtual ~BaseModel() = default;
   virtual Eigen::VectorXd
   computeModelFromPosition(const Eigen::VectorXd position,
-                           const Eigen::VectorXd increment) = 0;
-  virtual Eigen::VectorXd
-  computeAndUpdate(const Eigen::VectorXd &increment) = 0;
+                           const Eigen::VectorXd input) = 0;
+  virtual Eigen::VectorXd computeAndUpdate(const Eigen::VectorXd &input) = 0;
   void init(const Eigen::VectorXd &inistialState) {
     Xk_ = inistialState;
     last_pose_ = inistialState;
@@ -23,8 +22,21 @@ public:
 
   size_t delta_size() const { return delta_.size(); }
 
+  virtual Eigen::MatrixXd stateJacobian() const = 0;
+  virtual Eigen::MatrixXd inputJacobian() const = 0;
+
 protected:
   virtual void update(const Eigen::VectorXd &pos) = 0;
+
+  virtual void wrapAngle(double &angle) {
+    while (angle > M_PI) {
+      angle -= 2.0 * M_PI;
+    }
+    while (angle < -M_PI) {
+      angle += 2.0 * M_PI;
+    }
+  }
+
   Eigen::VectorXd Xk_;
   Eigen::VectorXd last_pose_;
   Eigen::VectorXd delta_;
