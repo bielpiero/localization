@@ -1,48 +1,78 @@
 #include "localization/Localization.h"
+#include "localization/ExtendedKF.h"
 #include "localization/UnscentedKF.h"
 #include "localization/models/IncrementalModel.hpp"
+#include "localization/models/VelocityModel.hpp"
+
+#include <geometry_msgs/TwistStamped.h>
 
 Localization::Localization(ros::NodeHandle &nh)
-    : nh_(nh), has_last_pose_(false), last_time_(0.0) {
+    : nh_(nh), has_last_increment_time_(false), has_last_speed_time_(false) {
+
   ros::NodeHandle pnh("~");
 
-  // Debug: mostrar que constructor se llama
   ROS_INFO("Localization ctor: entering constructor");
 
+  // --------------------------------------------------------------------------
+  // Map
+  // --------------------------------------------------------------------------
   std::string landmarks_file;
   if (!pnh.getParam("landmarks_file", landmarks_file)) {
     ROS_ERROR("Parameter ~landmarks_file is required but not set.");
     ros::shutdown();
     return;
   }
+
   ROS_INFO("Parameter landmarks_file = %s", landmarks_file.c_str());
+
   if (!loadLandmarksFromYAML(landmarks_file, landmarks_)) {
     ROS_ERROR("Failed to load landmarks from %s", landmarks_file.c_str());
     ros::shutdown();
     return;
   }
+
+  // --------------------------------------------------------------------------
+  // Initial pose
+  // --------------------------------------------------------------------------
   std::vector<double> initial_pose;
   if (!pnh.getParam("initial_pose", initial_pose)) {
     ROS_ERROR("Parameter ~initial_pose is required but not set.");
     ros::shutdown();
     return;
   }
+
   if (initial_pose.size() < 3) {
     ROS_ERROR("initial_pose must have 3 elements (x,y,theta). Got %zu",
               initial_pose.size());
     ros::shutdown();
     return;
   }
+
   ROS_INFO("Parameter initial_pose = [%.6f, %.6f, %.6f]", initial_pose[0],
            initial_pose[1], initial_pose[2]);
 
-  model_ = std::make_shared<IncrementalModel>();
   Eigen::VectorXd init_pose(3);
   init_pose << initial_pose[0], initial_pose[1], initial_pose[2];
-  model_->init(init_pose);
-  ips_ = std::make_shared<UnscentedKF>(model_, landmarks_, init_pose);
 
-  pnh.param("camera_height", camera_height_, 0.86); // por defecto 1m
+  // --------------------------------------------------------------------------
+  // Four estimators
+  // --------------------------------------------------------------------------
+  ips_ukf_inc_ =
+      std::make_shared<UnscentedKF<IncrementalModel>>(landmarks_, init_pose);
+
+  ips_ukf_vel_ =
+      std::make_shared<UnscentedKF<VelocityModel>>(landmarks_, init_pose);
+
+  ips_ekf_inc_ =
+      std::make_shared<ExtendedKF<IncrementalModel>>(landmarks_, init_pose);
+
+  ips_ekf_vel_ =
+      std::make_shared<ExtendedKF<VelocityModel>>(landmarks_, init_pose);
+
+  // --------------------------------------------------------------------------
+  // Measurement parameters
+  // --------------------------------------------------------------------------
+  pnh.param("camera_height", camera_height_, 0.86);
   pnh.param("theta_offset", theta_offset_, 0.0);
   pnh.param("theta_sign", theta_sign_, 1.0);
 
@@ -50,36 +80,61 @@ Localization::Localization(ros::NodeHandle &nh)
   ROS_INFO("theta_offset = %.6f, theta_sign = %.1f", theta_offset_,
            theta_sign_);
 
-  // DESCOMENTAR CUANDO ESTE MONTADO EN LA SILLA
-  pose_sub_ = nh_.subscribe("/pose", 10, &Localization::poseCallback, this);
-  increments_sub_ = nh_.subscribe("/kinematic_model_increment", 10,
+  // --------------------------------------------------------------------------
+  // Subscribers
+  //
+  // IMPORTANT:
+  // There is intentionally NO 20-Hz localization timer anymore.
+  // Prediction is triggered by kinematic input and correction by ArUco input.
+  // With ros::spin() these callbacks are processed sequentially and preserve
+  // a deterministic event order.
+  // --------------------------------------------------------------------------
+  pose_sub_ = nh_.subscribe("/pose/raw", 20, &Localization::poseCallback, this);
+
+  increments_sub_ = nh_.subscribe("/kinematics/increments", 50,
                                   &Localization::incrementsCallback, this);
 
-  // Suscripciones: usar nh_ (global) para tópicos públicos
-  ROS_INFO("Subscribing to /aruco_markers using global namespace");
+  speeds_sub_ = nh_.subscribe("/kinematics/speeds", 50,
+                              &Localization::speedsCallback, this);
+
   aruco_sub_ =
-      nh_.subscribe("/aruco_markers", 1, &Localization::arucoCallback, this);
+      nh_.subscribe("/aruco_markers", 5, &Localization::arucoCallback, this);
 
-  // Publishers
-  pose_pub_ = nh.advertise<geometry_msgs::Pose2D>("/update_pose", 10);
-  geometry_msgs::Pose2D pose_msg;
-  pose_msg.x = initial_pose[0];
-  pose_msg.y = initial_pose[1];
-  pose_msg.theta = initial_pose[2];
+  // --------------------------------------------------------------------------
+  // Publishers: one topic for every estimator/model combination
+  // --------------------------------------------------------------------------
+  pose_pub_ukf_inc_ = nh_.advertise<geometry_msgs::Pose2D>(
+      "/pose/filtered/ukf/incremental", 10);
 
-  pose_pub_.publish(pose_msg);
+  pose_pub_ukf_vel_ =
+      nh_.advertise<geometry_msgs::Pose2D>("/pose/filtered/ukf/velocity", 10);
 
-  timer_ = nh_.createWallTimer(ros::WallDuration(0.05),
-                               &Localization::timerCallback, this);
+  pose_pub_ekf_inc_ = nh_.advertise<geometry_msgs::Pose2D>(
+      "/pose/filtered/ekf/incremental", 10);
 
-  ROS_INFO("UKF node initialized. Listening for /pose and /aruco_markers …");
+  pose_pub_ekf_vel_ =
+      nh_.advertise<geometry_msgs::Pose2D>("/pose/filtered/ekf/velocity", 10);
+
+  publishFilteredPoses();
+
+  ROS_INFO("Localization initialized.");
+  ROS_INFO("Increment input : /kinematics/increments");
+  ROS_INFO("Velocity input  : /kinematics/speeds");
+  ROS_INFO("Raw pose        : /pose/raw");
+  ROS_INFO("Visual input    : /aruco_markers");
 }
+
+// =============================================================================
+// Landmark map
+// =============================================================================
 
 bool Localization::loadLandmarksFromYAML(const std::string &path,
                                          std::vector<Landmark> &out_landmarks) {
+
   try {
     YAML::Node root = YAML::LoadFile(path);
     YAML::Node lms = root["landmarks"];
+
     if (!lms || !lms.IsSequence()) {
       ROS_ERROR("landmarks: node missing or not a sequence in YAML.");
       return false;
@@ -90,67 +145,210 @@ bool Localization::loadLandmarksFromYAML(const std::string &path,
           Landmark(lm_node["id"].as<int>(), lm_node["x"].as<double>(),
                    lm_node["y"].as<double>(), lm_node["z"].as<double>()));
     }
+
   } catch (const std::exception &e) {
     ROS_ERROR("Exception parsing landmarks YAML: %s", e.what());
     return false;
   }
+
   ROS_INFO("Loaded %zu landmarks from YAML.", out_landmarks.size());
   return true;
 }
 
+// =============================================================================
+// Incremental kinematic input
+// =============================================================================
+
 void Localization::incrementsCallback(
     const canusb::KinematicModelIncrement::ConstPtr &msg) {
 
-  Eigen::VectorXd inc(2);
-  inc(0) = msg->d_lin;
-  inc(1) = msg->d_ang;
-  ips_->setIncrement(inc);
+  const ros::WallTime computation_start = ros::WallTime::now();
+
+  // The current custom increment message has no Header, therefore dt is
+  // temporarily obtained from callback arrival time. The IncrementalModel
+  // itself does not use dt, but IPositioningSystem has a common interface.
+  //
+  // Recommended final version:
+  // add std_msgs/Header to KinematicModelIncrement and use msg->header.stamp.
+  const ros::Time stamp = ros::Time::now();
+
+  if (!has_last_increment_time_) {
+    last_increment_time_ = stamp;
+    has_last_increment_time_ = true;
+    return;
+  }
+
+  const double dt = (stamp - last_increment_time_).toSec();
+
+  last_increment_time_ = stamp;
+
+  if (!std::isfinite(dt) || dt <= 0.0) {
+    ROS_WARN("Invalid incremental dt: %.9f", dt);
+    return;
+  }
+
+  Eigen::VectorXd input(2);
+  input(0) = msg->d_lin;
+  input(1) = msg->d_ang;
+
+  // SAME kinematic sample and SAME dt for both incremental estimators.
+  ips_ukf_inc_->setInput(input, dt);
+  ips_ukf_inc_->execute({});
+
+  ips_ekf_inc_->setInput(input, dt);
+  ips_ekf_inc_->execute({});
+
+  publishFilteredPoses();
+
+  const double elapsed_ms =
+      (ros::WallTime::now() - computation_start).toSec() * 1000.0;
+
+  ROS_DEBUG("Incremental UKF+EKF prediction time: %.3f ms", elapsed_ms);
 }
 
-// DESCOMENTAR CUANDO ESTE MONTADO EN LA SILLA
+// =============================================================================
+// Velocity kinematic input
+// =============================================================================
+
+void Localization::speedsCallback(
+    const geometry_msgs::TwistStamped::ConstPtr &msg) {
+
+  const ros::WallTime computation_start = ros::WallTime::now();
+
+  ros::Time stamp = msg->header.stamp;
+
+  // Defensive fallback if the publisher did not populate the stamp.
+  if (stamp.isZero()) {
+    stamp = ros::Time::now();
+  }
+
+  if (!has_last_speed_time_) {
+    last_speed_time_ = stamp;
+    has_last_speed_time_ = true;
+    return;
+  }
+
+  const double dt = (stamp - last_speed_time_).toSec();
+
+  last_speed_time_ = stamp;
+
+  if (!std::isfinite(dt) || dt <= 0.0) {
+    ROS_WARN("Invalid velocity dt: %.9f", dt);
+    return;
+  }
+
+  Eigen::VectorXd input(2);
+  input(0) = msg->twist.linear.x;
+  input(1) = msg->twist.angular.z;
+
+  // SAME velocity sample and SAME dt for both velocity estimators.
+  ips_ukf_vel_->setInput(input, dt);
+  ips_ukf_vel_->execute({});
+
+  ips_ekf_vel_->setInput(input, dt);
+  ips_ekf_vel_->execute({});
+
+  publishFilteredPoses();
+
+  const double elapsed_ms =
+      (ros::WallTime::now() - computation_start).toSec() * 1000.0;
+
+  ROS_DEBUG("Velocity UKF+EKF prediction time: %.3f ms", elapsed_ms);
+}
+
+// =============================================================================
+// Raw encoder-integrated pose
+// =============================================================================
+
 void Localization::poseCallback(const geometry_msgs::Pose2D::ConstPtr &msg) {
 
-  ips_->log(msg->x, msg->y, msg->theta);
+  // Raw odometry is NOT fed back into any estimator.
+  // It is only logged as a baseline/reference diagnostic.
+  ips_ukf_inc_->log(msg->x, msg->y, msg->theta);
+  ips_ukf_vel_->log(msg->x, msg->y, msg->theta);
+
+  ips_ekf_inc_->log(msg->x, msg->y, msg->theta);
+  ips_ekf_vel_->log(msg->x, msg->y, msg->theta);
 }
+
+// =============================================================================
+// Visual correction
+// =============================================================================
 
 void Localization::arucoCallback(
     const aruco_detector::ArucoMarkers::ConstPtr &msg) {
 
-  for (size_t i = 0; i < msg->markers.size(); ++i) {
-    const auto &m = msg->markers[i];
-    // ROS_INFO("marker[%zu] id=%u dist=%.6f theta=%.6f phi=%.6f", i, m.id,
-    //          m.distance, m.theta, m.phi);
-  }
+  const ros::WallTime computation_start = ros::WallTime::now();
 
-  std::lock_guard<std::mutex> lock(buffer_mutex_);
-  buffered_measurements_.clear();
+  std::vector<Landmark> measurements;
+  measurements.reserve(msg->markers.size());
 
   for (const auto &pwid : msg->markers) {
-    double r = pwid.distance; // Distancia en el plano 2D
-    if (std::isnan(r) || r <= 0.0) {
-      ROS_WARN("Ignoring invalid marker measurement r=%.6f", r);
+
+    const double range = pwid.distance;
+
+    if (!std::isfinite(range) || range <= 0.0) {
+      ROS_WARN("Ignoring invalid marker measurement r=%.6f", range);
       continue;
     }
 
-    double bearing = theta_sign_ * (pwid.theta + theta_offset_);
-    buffered_measurements_.push_back(Landmark(pwid.id, r, bearing));
+    const double bearing = theta_sign_ * (pwid.theta + theta_offset_);
+
+    if (!std::isfinite(bearing)) {
+      ROS_WARN("Ignoring invalid bearing for marker ID %u", pwid.id);
+      continue;
+    }
+
+    measurements.emplace_back(pwid.id, range, bearing);
   }
+
+  if (measurements.empty()) {
+    return;
+  }
+
+  // All four estimators receive EXACTLY the same visual measurement set.
+  //
+  // With a single-threaded ROS spinner no kinematic callback can be interleaved
+  // between these four calls.
+  ips_ukf_inc_->execute(measurements);
+  ips_ukf_vel_->execute(measurements);
+
+  ips_ekf_inc_->execute(measurements);
+  ips_ekf_vel_->execute(measurements);
+
+  publishFilteredPoses();
+
+  const double elapsed_ms =
+      (ros::WallTime::now() - computation_start).toSec() * 1000.0;
+
+  ROS_DEBUG("Four-filter ArUco update time: %.3f ms", elapsed_ms);
 }
 
-void Localization::timerCallback(const ros::WallTimerEvent &event) {
-  std::vector<Landmark> measurements_copy;
-  {
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    measurements_copy.swap(buffered_measurements_);
-  }
-  ROS_INFO("-------------------> TIMER: Meauruements size: %ld",
-           measurements_copy.size());
-  ips_->execute(measurements_copy);
-  // 3) (Optional) publish or log the new fused state:
-  Eigen::VectorXd fused = ips_->getState();
-  if (fused.size() >= 3) {
-    ROS_INFO("Fused state: [%f, %f, %f]", fused(0), fused(1), fused(2));
-  } else {
-    ROS_WARN("getState() size = %ld, expected >= 3", fused.size());
-  }
+// =============================================================================
+// Output
+// =============================================================================
+
+void Localization::publishFilteredPoses() {
+
+  auto publish_state = [](const std::shared_ptr<IPositioningSystem> &ips,
+                          ros::Publisher &publisher) {
+    const Eigen::VectorXd state = ips->getState();
+
+    if (state.size() < 3) {
+      return;
+    }
+
+    geometry_msgs::Pose2D msg;
+    msg.x = state(0);
+    msg.y = state(1);
+    msg.theta = state(2);
+
+    publisher.publish(msg);
+  };
+
+  publish_state(ips_ukf_inc_, pose_pub_ukf_inc_);
+  publish_state(ips_ukf_vel_, pose_pub_ukf_vel_);
+
+  publish_state(ips_ekf_inc_, pose_pub_ekf_inc_);
+  publish_state(ips_ekf_vel_, pose_pub_ekf_vel_);
 }

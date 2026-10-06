@@ -15,10 +15,13 @@
 #include <fstream>
 #include <iomanip> // para std::setprecision
 
-class UnscentedKF : public IPositioningSystem {
+template <class ModelT> class UnscentedKF : public IPositioningSystem {
+  static_assert(std::is_base_of<BaseModel, ModelT>::value &&
+                    !std::is_same<BaseModel, ModelT>::value,
+                "ModelT must be a class derived from BaseModel");
+
 public:
-  UnscentedKF(std::shared_ptr<BaseModel> model,
-              const std::vector<Landmark> &arucoMarkers,
+  UnscentedKF(const std::vector<Landmark> &arucoMarkers,
               const Eigen::VectorXd &initial_pose);
   virtual ~UnscentedKF();
 
@@ -28,7 +31,7 @@ private:
   void update(const std::vector<Landmark> &meas);
 
   virtual Eigen::VectorXd getState() const override { return xk_; }
-  
+
   virtual void log(double x, double y, double th) override;
 
   Eigen::MatrixXd getCovariance() const { return Pk_; }

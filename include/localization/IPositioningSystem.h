@@ -5,13 +5,13 @@
 #include "models/BaseModel.hpp"
 #include <eigen3/Eigen/Dense>
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 class IPositioningSystem {
 public:
-  IPositioningSystem(std::shared_ptr<BaseModel> model,
-                     const std::vector<Landmark> &landmark)
-      : model_(model), landmarks_(landmark.begin(), landmark.end()) {}
+  IPositioningSystem(const std::vector<Landmark> &landmark)
+      : model_(nullptr), landmarks_(landmark.begin(), landmark.end()) {}
   virtual void execute(const std::vector<Landmark> &meas) = 0;
   virtual Eigen::VectorXd getState() const = 0;
   virtual void setIncrement(const Eigen::VectorXd &inc) = 0;

@@ -8,15 +8,16 @@
 namespace {
 constexpr double kCovarianceEpsilon = 1e-12;
 constexpr double kRangeEpsilon = 1e-9;
-}
+} // namespace
 
-ExtendedKF::ExtendedKF(std::shared_ptr<BaseModel> model,
-                       const std::vector<Landmark> &arucoMarkers,
-                       const Eigen::VectorXd &initial_pose)
-    : IPositioningSystem(model, arucoMarkers),
-      has_new_input_(false),
-      dt_(0.0),
+template <class ModelT>
+ExtendedKF<ModelT>::ExtendedKF(const std::vector<Landmark> &arucoMarkers,
+                               const Eigen::VectorXd &initial_pose)
+    : IPositioningSystem(arucoMarkers), has_new_input_(false), dt_(0.0),
       mahalanobis_thresh_(5.991) {
+
+  model_ = std::make_shared<ModelT>();
+  model_->init(initial_pose);
 
   const int nx = static_cast<int>(model_->state_size());
   const int nu = static_cast<int>(model_->delta_size());
@@ -25,8 +26,9 @@ ExtendedKF::ExtendedKF(std::shared_ptr<BaseModel> model,
   uk_ = Eigen::VectorXd::Zero(nu);
 
   if (initial_pose.size() != nx) {
-    ROS_ERROR("ExtendedKF: initial pose has size %ld but model state size is %d",
-              initial_pose.size(), nx);
+    ROS_ERROR(
+        "ExtendedKF: initial pose has size %ld but model state size is %d",
+        initial_pose.size(), nx);
     throw std::runtime_error("Invalid initial pose dimension");
   }
 
@@ -50,8 +52,8 @@ ExtendedKF::ExtendedKF(std::shared_ptr<BaseModel> model,
   Rk_(0, 0) = 0.5;
   Rk_(1, 1) = 0.1;
 
-  ROS_INFO("ExtendedKF initialized with pose [%.3f, %.3f, %.3f]",
-           xk_(0), xk_(1), xk_(2));
+  ROS_INFO("ExtendedKF initialized with pose [%.3f, %.3f, %.3f]", xk_(0),
+           xk_(1), xk_(2));
 
   cov_log_.open("/home/sara/cov_ekf_log.csv", std::ios::out);
   if (cov_log_) {
@@ -75,7 +77,7 @@ ExtendedKF::ExtendedKF(std::shared_ptr<BaseModel> model,
   }
 }
 
-ExtendedKF::~ExtendedKF() {
+template <class ModelT> ExtendedKF<ModelT>::~ExtendedKF() {
   if (xy_log_.is_open()) {
     xy_log_.close();
   }
@@ -89,7 +91,8 @@ ExtendedKF::~ExtendedKF() {
   }
 }
 
-void ExtendedKF::execute(const std::vector<Landmark> &meas) {
+template <class ModelT>
+void ExtendedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
   if (has_new_input_) {
     prediction();
     has_new_input_ = false;
@@ -102,7 +105,8 @@ void ExtendedKF::execute(const std::vector<Landmark> &meas) {
   logCovariance();
 }
 
-void ExtendedKF::setInput(const Eigen::VectorXd &input, double dt) {
+template <class ModelT>
+void ExtendedKF<ModelT>::setInput(const Eigen::VectorXd &input, double dt) {
   if (input.size() != uk_.size()) {
     ROS_ERROR("ExtendedKF::setInput: input size %ld, expected %ld",
               input.size(), uk_.size());
@@ -119,7 +123,7 @@ void ExtendedKF::setInput(const Eigen::VectorXd &input, double dt) {
   has_new_input_ = true;
 }
 
-void ExtendedKF::prediction() {
+template <class ModelT> void ExtendedKF<ModelT>::prediction() {
   if (!has_new_input_) {
     return;
   }
@@ -127,11 +131,9 @@ void ExtendedKF::prediction() {
   const Eigen::VectorXd x_prior = xk_;
   const Eigen::MatrixXd P_prior = Pk_;
 
-  const Eigen::MatrixXd F =
-      model_->stateJacobian(x_prior, uk_, dt_);
+  const Eigen::MatrixXd F = model_->stateJacobian(x_prior, uk_, dt_);
 
-  const Eigen::MatrixXd G =
-      model_->inputJacobian(x_prior, uk_, dt_);
+  const Eigen::MatrixXd G = model_->inputJacobian(x_prior, uk_, dt_);
 
   if (F.rows() != Pk_.rows() || F.cols() != Pk_.cols()) {
     ROS_ERROR("ExtendedKF::prediction: invalid F dimensions");
@@ -151,18 +153,16 @@ void ExtendedKF::prediction() {
     return;
   }
 
-  Pk_ =
-      F * P_prior * F.transpose()
-      + G * Qk_ * G.transpose();
+  Pk_ = F * P_prior * F.transpose() + G * Qk_ * G.transpose();
 
   Pk_ = 0.5 * (Pk_ + Pk_.transpose());
-  Pk_ += kCovarianceEpsilon *
-         Eigen::MatrixXd::Identity(Pk_.rows(), Pk_.cols());
+  Pk_ += kCovarianceEpsilon * Eigen::MatrixXd::Identity(Pk_.rows(), Pk_.cols());
 
   uk_.setZero();
 }
 
-void ExtendedKF::update(const std::vector<Landmark> &meas) {
+template <class ModelT>
+void ExtendedKF<ModelT>::update(const std::vector<Landmark> &meas) {
   const int nx = static_cast<int>(xk_.size());
 
   std::vector<Eigen::Vector2d> accepted_z;
@@ -206,16 +206,14 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
 
     const double predicted_range = std::sqrt(q);
 
-    double predicted_bearing =
-        std::atan2(dy, dx) - xk_(2);
+    double predicted_bearing = std::atan2(dy, dx) - xk_(2);
     predicted_bearing = wrapAngle(predicted_bearing);
 
     Eigen::Vector2d h;
     h << predicted_range, predicted_bearing;
 
     Eigen::Vector2d z;
-    z << measurement.range(),
-         wrapAngle(measurement.bearing());
+    z << measurement.range(), wrapAngle(measurement.bearing());
 
     if (!z.allFinite()) {
       ROS_WARN("ExtendedKF: invalid measurement from landmark ID %u",
@@ -227,28 +225,21 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
     innovation(1) = wrapAngle(innovation(1));
 
     Eigen::Matrix<double, 2, 3> H;
-    H << -dx / predicted_range,
-         -dy / predicted_range,
-          0.0,
+    H << -dx / predicted_range, -dy / predicted_range, 0.0,
 
-          dy / q,
-         -dx / q,
-         -1.0;
+        dy / q, -dx / q, -1.0;
 
-    Eigen::Matrix2d S =
-        H * Pk_ * H.transpose() + Rk_;
+    Eigen::Matrix2d S = H * Pk_ * H.transpose() + Rk_;
 
     S = 0.5 * (S + S.transpose());
 
     Eigen::LDLT<Eigen::Matrix2d> ldlt(S);
     if (ldlt.info() != Eigen::Success) {
-      ROS_WARN("ExtendedKF: LDLT failed for landmark ID %u",
-               measurement.id());
+      ROS_WARN("ExtendedKF: LDLT failed for landmark ID %u", measurement.id());
       continue;
     }
 
-    const Eigen::Vector2d solved =
-        ldlt.solve(innovation);
+    const Eigen::Vector2d solved = ldlt.solve(innovation);
 
     if (!solved.allFinite()) {
       ROS_WARN("ExtendedKF: invalid innovation solve for landmark ID %u",
@@ -258,9 +249,7 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
 
     const double nis = innovation.dot(solved);
 
-    const bool accepted =
-        std::isfinite(nis) &&
-        nis <= mahalanobis_thresh_;
+    const bool accepted = std::isfinite(nis) && nis <= mahalanobis_thresh_;
 
     logNIS(measurement.id(), nis, accepted);
 
@@ -273,25 +262,20 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
     accepted_H.push_back(H);
   }
 
-  const int n_accepted =
-      static_cast<int>(accepted_z.size());
+  const int n_accepted = static_cast<int>(accepted_z.size());
 
   if (n_accepted == 0) {
     return;
   }
 
   // Joint correction with all accepted landmarks.
-  Eigen::VectorXd z =
-      Eigen::VectorXd::Zero(2 * n_accepted);
+  Eigen::VectorXd z = Eigen::VectorXd::Zero(2 * n_accepted);
 
-  Eigen::VectorXd h =
-      Eigen::VectorXd::Zero(2 * n_accepted);
+  Eigen::VectorXd h = Eigen::VectorXd::Zero(2 * n_accepted);
 
-  Eigen::MatrixXd H =
-      Eigen::MatrixXd::Zero(2 * n_accepted, nx);
+  Eigen::MatrixXd H = Eigen::MatrixXd::Zero(2 * n_accepted, nx);
 
-  Eigen::MatrixXd R =
-      Eigen::MatrixXd::Zero(2 * n_accepted, 2 * n_accepted);
+  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2 * n_accepted, 2 * n_accepted);
 
   for (int i = 0; i < n_accepted; ++i) {
     z.segment<2>(2 * i) = accepted_z[i];
@@ -303,12 +287,10 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
   Eigen::VectorXd innovation = z - h;
 
   for (int i = 0; i < n_accepted; ++i) {
-    innovation(2 * i + 1) =
-        wrapAngle(innovation(2 * i + 1));
+    innovation(2 * i + 1) = wrapAngle(innovation(2 * i + 1));
   }
 
-  Eigen::MatrixXd S =
-      H * Pk_ * H.transpose() + R;
+  Eigen::MatrixXd S = H * Pk_ * H.transpose() + R;
 
   S = 0.5 * (S + S.transpose());
 
@@ -319,8 +301,7 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
   }
 
   // K = P H^T S^-1 without explicitly forming S^-1.
-  Eigen::MatrixXd K =
-      ldlt.solve(H * Pk_.transpose()).transpose();
+  Eigen::MatrixXd K = ldlt.solve(H * Pk_.transpose()).transpose();
 
   if (!K.allFinite()) {
     ROS_WARN("ExtendedKF: non-finite Kalman gain");
@@ -333,22 +314,18 @@ void ExtendedKF::update(const std::vector<Landmark> &meas) {
   xk_(2) = wrapAngle(xk_(2));
 
   // Joseph covariance update.
-  const Eigen::MatrixXd I =
-      Eigen::MatrixXd::Identity(nx, nx);
+  const Eigen::MatrixXd I = Eigen::MatrixXd::Identity(nx, nx);
 
-  const Eigen::MatrixXd I_KH =
-      I - K * H;
+  const Eigen::MatrixXd I_KH = I - K * H;
 
-  Pk_ =
-      I_KH * P_prior * I_KH.transpose()
-      + K * R * K.transpose();
+  Pk_ = I_KH * P_prior * I_KH.transpose() + K * R * K.transpose();
 
   Pk_ = 0.5 * (Pk_ + Pk_.transpose());
-  Pk_ += kCovarianceEpsilon *
-         Eigen::MatrixXd::Identity(nx, nx);
+  Pk_ += kCovarianceEpsilon * Eigen::MatrixXd::Identity(nx, nx);
 }
 
-void ExtendedKF::setProcessNoise(const Eigen::MatrixXd &Q) {
+template <class ModelT>
+void ExtendedKF<ModelT>::setProcessNoise(const Eigen::MatrixXd &Q) {
   if (Q.rows() != Qk_.rows() || Q.cols() != Qk_.cols()) {
     ROS_ERROR("ExtendedKF::setProcessNoise: expected %ld x %ld, got %ld x %ld",
               Qk_.rows(), Qk_.cols(), Q.rows(), Q.cols());
@@ -358,69 +335,56 @@ void ExtendedKF::setProcessNoise(const Eigen::MatrixXd &Q) {
   Qk_ = 0.5 * (Q + Q.transpose());
 }
 
-void ExtendedKF::setMeasurementNoise(const Eigen::Matrix2d &R) {
+template <class ModelT>
+void ExtendedKF<ModelT>::setMeasurementNoise(const Eigen::Matrix2d &R) {
   Rk_ = 0.5 * (R + R.transpose());
 }
 
-void ExtendedKF::setMahalanobisThreshold(double threshold) {
+template <class ModelT>
+void ExtendedKF<ModelT>::setMahalanobisThreshold(double threshold) {
   if (std::isfinite(threshold) && threshold > 0.0) {
     mahalanobis_thresh_ = threshold;
   }
 }
 
-void ExtendedKF::logCovariance() {
+template <class ModelT> void ExtendedKF<ModelT>::logCovariance() {
   if (!cov_log_.is_open()) {
     return;
   }
 
   const double t = ros::Time::now().toSec();
 
-  cov_log_ << std::fixed << std::setprecision(9)
-           << t << ","
-           << Pk_(0, 0) << ","
-           << Pk_(0, 1) << ","
-           << Pk_(0, 2) << ","
-           << Pk_(1, 1) << ","
-           << Pk_(1, 2) << ","
-           << Pk_(2, 2) << "\n";
+  cov_log_ << std::fixed << std::setprecision(9) << t << "," << Pk_(0, 0) << ","
+           << Pk_(0, 1) << "," << Pk_(0, 2) << "," << Pk_(1, 1) << ","
+           << Pk_(1, 2) << "," << Pk_(2, 2) << "\n";
 }
 
-void ExtendedKF::logNIS(int landmark_id,
-                        double nis,
-                        bool accepted) {
+template <class ModelT>
+void ExtendedKF<ModelT>::logNIS(int landmark_id, double nis, bool accepted) {
   if (!nis_log_.is_open()) {
     return;
   }
 
   const double t = ros::Time::now().toSec();
 
-  nis_log_ << std::fixed << std::setprecision(9)
-           << t << ","
-           << landmark_id << ","
-           << nis << ","
-           << (accepted ? 1 : 0) << "\n";
+  nis_log_ << std::fixed << std::setprecision(9) << t << "," << landmark_id
+           << "," << nis << "," << (accepted ? 1 : 0) << "\n";
 }
 
-void ExtendedKF::log(double x,
-                     double y,
-                     double theta) {
+template <class ModelT>
+void ExtendedKF<ModelT>::log(double x, double y, double theta) {
   if (!xy_log_.is_open()) {
     return;
   }
 
   const double t = ros::Time::now().toSec();
 
-  xy_log_ << std::fixed << std::setprecision(9)
-          << t << ","
-          << x << ","
-          << y << ","
-          << theta << ","
-          << xk_(0) << ","
-          << xk_(1) << ","
-          << xk_(2) << "\n";
+  xy_log_ << std::fixed << std::setprecision(9) << t << "," << x << "," << y
+          << "," << theta << "," << xk_(0) << "," << xk_(1) << "," << xk_(2)
+          << "\n";
 }
 
-double ExtendedKF::wrapAngle(double angle) {
+template <class ModelT> double ExtendedKF<ModelT>::wrapAngle(double angle) {
   while (angle > M_PI) {
     angle -= 2.0 * M_PI;
   }

@@ -10,10 +10,13 @@
 #include <ros/ros.h>
 #include <vector>
 
-class ExtendedKF : public IPositioningSystem {
+template <class ModelT> class ExtendedKF : public IPositioningSystem {
+  static_assert(std::is_base_of<BaseModel, ModelT>::value &&
+                    !std::is_same<BaseModel, ModelT>::value,
+                "ModelT must be a class derived from BaseModel");
+
 public:
-  ExtendedKF(std::shared_ptr<BaseModel> model,
-             const std::vector<Landmark> &arucoMarkers,
+  ExtendedKF(const std::vector<Landmark> &arucoMarkers,
              const Eigen::VectorXd &initial_pose);
 
   ~ExtendedKF() override;

@@ -41,10 +41,12 @@ void printEigenvalues(const std::string &name, const Eigen::MatrixXd &M) {
   }
 }
 
-UnscentedKF::UnscentedKF(std::shared_ptr<BaseModel> model,
-                         const std::vector<Landmark> &arucoMarkers,
-                         const Eigen::VectorXd &initial_pose)
-    : IPositioningSystem(model, arucoMarkers) {
+template <class ModelT>
+UnscentedKF<ModelT>::UnscentedKF(const std::vector<Landmark> &arucoMarkers,
+                                 const Eigen::VectorXd &initial_pose)
+    : IPositioningSystem(arucoMarkers) {
+  model_ = std::make_shared<ModelT>();
+  model_->init(initial_pose);
   xk_ = Eigen::VectorXd::Zero(model->state_size());
   xk_1_ = Eigen::VectorXd::Zero(model->state_size());
 
@@ -115,7 +117,8 @@ UnscentedKF::UnscentedKF(std::shared_ptr<BaseModel> model,
   xy_log_.open("/home/sara/ukf_xy_log.csv");
   xy_log_ << "t,x_pose,y_pose,th_pose,x_ukf,y_ukf,th_ukf\n";
 }
-UnscentedKF::~UnscentedKF() {
+
+template <class ModelT> UnscentedKF<ModelT>::~UnscentedKF() {
   if (cov_log_.is_open()) {
     cov_log_.close();
   }
@@ -124,7 +127,8 @@ UnscentedKF::~UnscentedKF() {
   }
 }
 
-void UnscentedKF::execute(const std::vector<Landmark> &meas) {
+template <class ModelT>
+void UnscentedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
 
   if (has_new_increment_) {
     prediction();
@@ -136,7 +140,7 @@ void UnscentedKF::execute(const std::vector<Landmark> &meas) {
   logCovariance();
 }
 
-void UnscentedKF::prediction() {
+template <class ModelT> void UnscentedKF<ModelT>::prediction() {
   // ROS_INFO("nx_=%d, nv_=%d, na_=%d, nsig_=%d", nx_, nv_, na_, nsig_);
 
   x_aug_.head(nx_) = xk_;
@@ -211,7 +215,8 @@ void UnscentedKF::prediction() {
   uk_.setZero();
 }
 
-void UnscentedKF::update(const std::vector<Landmark> &meas) {
+template <class ModelT>
+void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
   const int n_meas = static_cast<int>(meas.size());
   if (n_meas == 0)
     return;
@@ -420,12 +425,13 @@ void UnscentedKF::update(const std::vector<Landmark> &meas) {
   printEigenvalues("P after", Pk_);
 }
 
-void UnscentedKF::setIncrement(const Eigen::VectorXd &inc) {
+template <class ModelT>
+void UnscentedKF<ModelT>::setIncrement(const Eigen::VectorXd &inc) {
   uk_ = inc;
   has_new_increment_ = true;
 }
 
-void UnscentedKF::logCovariance() {
+template <class ModelT> void UnscentedKF<ModelT>::logCovariance() {
   if (!cov_log_.is_open()) {
     return;
   }
@@ -436,7 +442,8 @@ void UnscentedKF::logCovariance() {
            << Pk_(1, 1) << "," << Pk_(2, 2) << "\n";
 }
 
-void UnscentedKF::log(double x, double y, double theta) {
+template <class ModelT>
+void UnscentedKF<ModelT>::log(double x, double y, double theta) {
   if (!xy_log_.is_open())
     return;
 
