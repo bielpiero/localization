@@ -67,6 +67,6 @@ private:
   std::ofstream nis_log_;
 };
 
-#include <ExtendedKF.tpp>
+#include "ExtendedKF.tpp"
 
 #endif

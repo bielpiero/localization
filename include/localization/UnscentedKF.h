@@ -90,8 +90,6 @@ private:
   std::ofstream nis_log_;
 };
 
-// Template implementations must be visible at the point of instantiation.
-// Keep them in a .tpp file rather than compiling a separate .cpp.
-#include <UnscentedKF.tpp>
+#include "UnscentedKF.tpp"
 
 #endif
