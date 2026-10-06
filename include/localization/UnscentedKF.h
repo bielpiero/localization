@@ -1,19 +1,16 @@
-#ifndef RN_UKF_TASK_H
-#define RN_UKF_TASK_H
+#ifndef UNSCENTED_KF_H
+#define UNSCENTED_KF_H
 
 #include "IPositioningSystem.h"
 #include "Landmark.hpp"
-#include <cmath> // std::sqrt, std::atan2, M_PI
-#include <eigen3/Eigen/Dense>
-#include <limits> // std::numeric_limits
-#include <list>
-#include <ros/ros.h>
-#include <unordered_map>
-#include <vector>
 
-#include <cmath>
+#include <eigen3/Eigen/Dense>
 #include <fstream>
-#include <iomanip> // para std::setprecision
+#include <ros/ros.h>
+#include <string>
+#include <type_traits>
+#include <typeinfo>
+#include <vector>
 
 template <class ModelT> class UnscentedKF : public IPositioningSystem {
   static_assert(std::is_base_of<BaseModel, ModelT>::value &&
@@ -22,33 +19,49 @@ template <class ModelT> class UnscentedKF : public IPositioningSystem {
 
 public:
   UnscentedKF(const std::vector<Landmark> &arucoMarkers,
-              const Eigen::VectorXd &initial_pose);
-  virtual ~UnscentedKF();
+              const Eigen::VectorXd &initial_pose,
+              const std::string &instance_name = "");
 
-private:
-  virtual void execute(const std::vector<Landmark> &meas) override;
-  void prediction();
-  void update(const std::vector<Landmark> &meas);
+  ~UnscentedKF() override;
 
-  virtual Eigen::VectorXd getState() const override { return xk_; }
+  void execute(const std::vector<Landmark> &meas) override;
 
-  virtual void log(double x, double y, double th) override;
+  Eigen::VectorXd getState() const override { return xk_; }
+
+  void setInput(const Eigen::VectorXd &input, double dt) override;
+
+  void log(double x, double y, double th) override;
 
   Eigen::MatrixXd getCovariance() const { return Pk_; }
 
-  virtual void setIncrement(const Eigen::VectorXd &inc) override;
+  void setProcessNoise(const Eigen::MatrixXd &Q);
+  void setMeasurementNoise(const Eigen::Matrix2d &R);
+  void setMahalanobisThreshold(double threshold);
 
 private:
-  Eigen::VectorXd xk_;   // current position
-  Eigen::VectorXd xk_1_; // previous position
+  void prediction();
+  void update(const std::vector<Landmark> &meas);
 
-  Eigen::VectorXd uk_; // input actual [d_lin, d_ang]
-  bool has_new_increment_;
+  // Required when two visual updates occur without a prediction in between.
+  // It rebuilds sigma points around the current posterior (xk_, Pk_).
+  bool regenerateStateSigmaPoints();
 
-  // variaces and covariances matrices MAtrices dinamicas, (Xd)
+  void logCovariance();
+  void logNIS(int landmark_id, double nis, bool accepted);
+
+  static double wrapAngle(double angle);
+
+private:
+  Eigen::VectorXd xk_;
+  Eigen::VectorXd uk_;
+
   Eigen::MatrixXd Pk_;
   Eigen::MatrixXd Qk_;
-  Eigen::MatrixXd Rk_;
+  Eigen::Matrix2d Rk_;
+
+  bool has_new_input_;
+  bool sigma_points_valid_;
+  double dt_;
 
   double alpha_;
   double beta_;
@@ -65,18 +78,20 @@ private:
   std::vector<double> wm_;
   std::vector<double> wc_;
 
-  // augmented matrices
   Eigen::VectorXd x_aug_;
   Eigen::MatrixXd p_aug_;
   std::vector<Eigen::VectorXd> xsig_aug_;
   std::vector<Eigen::VectorXd> xsig_pred_;
 
-  // --- Logging of pose and UKF ---
-  std::ofstream xy_log_;
+  std::string instance_name_;
 
-  // --- Logging of covariance ---
+  std::ofstream xy_log_;
   std::ofstream cov_log_;
-  void logCovariance();
+  std::ofstream nis_log_;
 };
+
+// Template implementations must be visible at the point of instantiation.
+// Keep them in a .tpp file rather than compiling a separate .cpp.
+#include <UnscentedKF.tpp>
 
 #endif

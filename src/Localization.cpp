@@ -5,6 +5,7 @@
 #include "localization/models/VelocityModel.hpp"
 
 #include <geometry_msgs/TwistStamped.h>
+#include <cmath>
 
 Localization::Localization(ros::NodeHandle &nh)
     : nh_(nh), has_last_increment_time_(false), has_last_speed_time_(false) {
@@ -58,16 +59,20 @@ Localization::Localization(ros::NodeHandle &nh)
   // Four estimators
   // --------------------------------------------------------------------------
   ips_ukf_inc_ =
-      std::make_shared<UnscentedKF<IncrementalModel>>(landmarks_, init_pose);
+      std::make_shared<UnscentedKF<IncrementalModel>>(landmarks_, init_pose,
+                                                       "ukf_incremental");
 
   ips_ukf_vel_ =
-      std::make_shared<UnscentedKF<VelocityModel>>(landmarks_, init_pose);
+      std::make_shared<UnscentedKF<VelocityModel>>(landmarks_, init_pose,
+                                                    "ukf_velocity");
 
   ips_ekf_inc_ =
-      std::make_shared<ExtendedKF<IncrementalModel>>(landmarks_, init_pose);
+      std::make_shared<ExtendedKF<IncrementalModel>>(landmarks_, init_pose,
+                                                      "ekf_incremental");
 
   ips_ekf_vel_ =
-      std::make_shared<ExtendedKF<VelocityModel>>(landmarks_, init_pose);
+      std::make_shared<ExtendedKF<VelocityModel>>(landmarks_, init_pose,
+                                                   "ekf_velocity");
 
   // --------------------------------------------------------------------------
   // Measurement parameters

@@ -6,8 +6,10 @@
 
 #include <eigen3/Eigen/Dense>
 #include <fstream>
-#include <memory>
 #include <ros/ros.h>
+#include <string>
+#include <type_traits>
+#include <typeinfo>
 #include <vector>
 
 template <class ModelT> class ExtendedKF : public IPositioningSystem {
@@ -17,7 +19,8 @@ template <class ModelT> class ExtendedKF : public IPositioningSystem {
 
 public:
   ExtendedKF(const std::vector<Landmark> &arucoMarkers,
-             const Eigen::VectorXd &initial_pose);
+             const Eigen::VectorXd &initial_pose,
+             const std::string &instance_name = "");
 
   ~ExtendedKF() override;
 
@@ -25,11 +28,9 @@ public:
 
   Eigen::VectorXd getState() const override { return xk_; }
 
-  void log(double x_pose, double y_pose, double th_pose) override;
-
-  // Requires the corresponding change in IPositioningSystem:
-  // virtual void setInput(const Eigen::VectorXd&, double dt) = 0;
   void setInput(const Eigen::VectorXd &input, double dt) override;
+
+  void log(double x_pose, double y_pose, double th_pose) override;
 
   Eigen::MatrixXd getCovariance() const { return Pk_; }
 
@@ -59,9 +60,13 @@ private:
 
   double mahalanobis_thresh_;
 
+  std::string instance_name_;
+
   std::ofstream xy_log_;
   std::ofstream cov_log_;
   std::ofstream nis_log_;
 };
+
+#include <ExtendedKF.tpp>
 
 #endif
