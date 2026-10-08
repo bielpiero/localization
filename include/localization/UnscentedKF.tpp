@@ -3,18 +3,12 @@
 #include <stdexcept>
 
 template <class ModelT>
-UnscentedKF<ModelT>::UnscentedKF(
-    const std::vector<Landmark> &arucoMarkers,
-    const Eigen::VectorXd &initial_pose,
-    const std::string &instance_name)
-    : IPositioningSystem(arucoMarkers),
-      has_new_input_(false),
-      sigma_points_valid_(false),
-      dt_(0.0),
-      alpha_(1e-3),
-      beta_(2.0),
-      kappa_(0.0),
-      mahalanobis_thresh_(5.991) {
+UnscentedKF<ModelT>::UnscentedKF(const std::vector<Landmark> &arucoMarkers,
+                                 const Eigen::VectorXd &initial_pose,
+                                 const std::string &instance_name)
+    : IPositioningSystem(arucoMarkers), has_new_input_(false),
+      sigma_points_valid_(false), dt_(0.0), alpha_(0.5), beta_(2.0),
+      kappa_(0.0), mahalanobis_thresh_(5.991) {
 
   model_ = std::make_shared<ModelT>();
   model_->init(initial_pose);
@@ -23,8 +17,9 @@ UnscentedKF<ModelT>::UnscentedKF(
   nv_ = static_cast<int>(model_->delta_size());
 
   if (initial_pose.size() != nx_) {
-    ROS_ERROR("UnscentedKF: initial pose has size %ld but model state size is %d",
-              initial_pose.size(), nx_);
+    ROS_ERROR(
+        "UnscentedKF: initial pose has size %ld but model state size is %d",
+        initial_pose.size(), nx_);
     throw std::runtime_error("Invalid initial pose dimension");
   }
 
@@ -72,24 +67,20 @@ UnscentedKF<ModelT>::UnscentedKF(
   xsig_aug_.assign(nsig_, Eigen::VectorXd::Zero(na_));
   xsig_pred_.assign(nsig_, Eigen::VectorXd::Zero(nx_));
 
-  instance_name_ =
-      instance_name.empty() ? std::string(typeid(ModelT).name()) : instance_name;
+  instance_name_ = instance_name.empty() ? std::string(typeid(ModelT).name())
+                                         : instance_name;
 
-  const std::string cov_path =
-      "/home/sara/cov_" + instance_name_ + ".csv";
+  const std::string cov_path = "/home/sara/cov_" + instance_name_ + ".csv";
 
-  const std::string xy_path =
-      "/home/sara/pose_" + instance_name_ + ".csv";
+  const std::string xy_path = "/home/sara/pose_" + instance_name_ + ".csv";
 
-  const std::string nis_path =
-      "/home/sara/nis_" + instance_name_ + ".csv";
+  const std::string nis_path = "/home/sara/nis_" + instance_name_ + ".csv";
 
   cov_log_.open(cov_path, std::ios::out);
   if (cov_log_) {
     cov_log_ << "time,P_xx,P_xy,P_xtheta,P_yy,P_ytheta,P_thetatheta\n";
   } else {
-    ROS_WARN("UnscentedKF: could not open covariance log %s",
-             cov_path.c_str());
+    ROS_WARN("UnscentedKF: could not open covariance log %s", cov_path.c_str());
   }
 
   xy_log_.open(xy_path, std::ios::out);
@@ -110,8 +101,7 @@ UnscentedKF<ModelT>::UnscentedKF(
            instance_name_.c_str(), xk_(0), xk_(1), xk_(2));
 }
 
-template <class ModelT>
-UnscentedKF<ModelT>::~UnscentedKF() {
+template <class ModelT> UnscentedKF<ModelT>::~UnscentedKF() {
   if (xy_log_.is_open()) {
     xy_log_.close();
   }
@@ -140,9 +130,7 @@ void UnscentedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::setInput(
-    const Eigen::VectorXd &input,
-    double dt) {
+void UnscentedKF<ModelT>::setInput(const Eigen::VectorXd &input, double dt) {
 
   if (input.size() != uk_.size()) {
     ROS_ERROR("UnscentedKF::setInput: input size %ld, expected %ld",
@@ -160,8 +148,7 @@ void UnscentedKF<ModelT>::setInput(
   has_new_input_ = true;
 }
 
-template <class ModelT>
-void UnscentedKF<ModelT>::prediction() {
+template <class ModelT> void UnscentedKF<ModelT>::prediction() {
   x_aug_.setZero();
   x_aug_.head(nx_) = xk_;
 
@@ -201,17 +188,12 @@ void UnscentedKF<ModelT>::prediction() {
   }
 
   for (int i = 0; i < nsig_; ++i) {
-    const Eigen::VectorXd x_state =
-        xsig_aug_[i].head(nx_);
+    const Eigen::VectorXd x_state = xsig_aug_[i].head(nx_);
 
-    const Eigen::VectorXd input_noise =
-        xsig_aug_[i].tail(nv_);
+    const Eigen::VectorXd input_noise = xsig_aug_[i].tail(nv_);
 
     const Eigen::VectorXd x_pred =
-        model_->computeModelFromPosition(
-            x_state,
-            uk_ + input_noise,
-            dt_);
+        model_->computeModelFromPosition(x_state, uk_ + input_noise, dt_);
 
     if (x_pred.size() != nx_ || !x_pred.allFinite()) {
       ROS_ERROR("UnscentedKF: invalid predicted sigma point");
@@ -255,8 +237,7 @@ void UnscentedKF<ModelT>::prediction() {
   sigma_points_valid_ = true;
 }
 
-template <class ModelT>
-bool UnscentedKF<ModelT>::regenerateStateSigmaPoints() {
+template <class ModelT> bool UnscentedKF<ModelT>::regenerateStateSigmaPoints() {
   x_aug_.setZero();
   x_aug_.head(nx_) = xk_;
 
@@ -306,8 +287,7 @@ bool UnscentedKF<ModelT>::regenerateStateSigmaPoints() {
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::update(
-    const std::vector<Landmark> &meas) {
+void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
 
   if (meas.empty()) {
     return;
@@ -347,8 +327,7 @@ void UnscentedKF<ModelT>::update(
       continue;
     }
 
-    Eigen::MatrixXd Zsig_j =
-        Eigen::MatrixXd::Zero(2, nsig_);
+    Eigen::MatrixXd Zsig_j = Eigen::MatrixXd::Zero(2, nsig_);
 
     for (int i = 0; i < nsig_; ++i) {
       const Eigen::VectorXd &sigma = xsig_pred_[i];
@@ -357,12 +336,10 @@ void UnscentedKF<ModelT>::update(
       const double dy = lm_y - sigma(1);
 
       Zsig_j(0, i) = std::sqrt(dx * dx + dy * dy);
-      Zsig_j(1, i) =
-          wrapAngle(std::atan2(dy, dx) - sigma(2));
+      Zsig_j(1, i) = wrapAngle(std::atan2(dy, dx) - sigma(2));
     }
 
-    Eigen::Vector2d z_pred_j =
-        Eigen::Vector2d::Zero();
+    Eigen::Vector2d z_pred_j = Eigen::Vector2d::Zero();
 
     double bearing_s = 0.0;
     double bearing_c = 0.0;
@@ -370,35 +347,28 @@ void UnscentedKF<ModelT>::update(
     for (int i = 0; i < nsig_; ++i) {
       z_pred_j(0) += wm_[i] * Zsig_j(0, i);
 
-      bearing_s +=
-          wm_[i] * std::sin(Zsig_j(1, i));
+      bearing_s += wm_[i] * std::sin(Zsig_j(1, i));
 
-      bearing_c +=
-          wm_[i] * std::cos(Zsig_j(1, i));
+      bearing_c += wm_[i] * std::cos(Zsig_j(1, i));
     }
 
-    z_pred_j(1) =
-        std::atan2(bearing_s, bearing_c);
+    z_pred_j(1) = std::atan2(bearing_s, bearing_c);
 
     Eigen::Vector2d z_meas_j;
-    z_meas_j << measurement.range(),
-                wrapAngle(measurement.bearing());
+    z_meas_j << measurement.range(), wrapAngle(measurement.bearing());
 
     if (!z_meas_j.allFinite()) {
       continue;
     }
 
-    Eigen::Vector2d nu_j =
-        z_meas_j - z_pred_j;
+    Eigen::Vector2d nu_j = z_meas_j - z_pred_j;
 
     nu_j(1) = wrapAngle(nu_j(1));
 
-    Eigen::Matrix2d S_j =
-        Eigen::Matrix2d::Zero();
+    Eigen::Matrix2d S_j = Eigen::Matrix2d::Zero();
 
     for (int i = 0; i < nsig_; ++i) {
-      Eigen::Vector2d dz =
-          Zsig_j.col(i) - z_pred_j;
+      Eigen::Vector2d dz = Zsig_j.col(i) - z_pred_j;
 
       dz(1) = wrapAngle(dz(1));
 
@@ -414,19 +384,15 @@ void UnscentedKF<ModelT>::update(
       continue;
     }
 
-    const Eigen::Vector2d solved =
-        ldlt.solve(nu_j);
+    const Eigen::Vector2d solved = ldlt.solve(nu_j);
 
     if (!solved.allFinite()) {
       continue;
     }
 
-    const double nis =
-        nu_j.dot(solved);
+    const double nis = nu_j.dot(solved);
 
-    const bool accepted =
-        std::isfinite(nis) &&
-        nis <= mahalanobis_thresh_;
+    const bool accepted = std::isfinite(nis) && nis <= mahalanobis_thresh_;
 
     logNIS(measurement.id(), nis, accepted);
 
@@ -440,62 +406,42 @@ void UnscentedKF<ModelT>::update(
     accepted_nu.push_back(nu_j);
   }
 
-  const int n_accepted =
-      static_cast<int>(accepted_z_meas.size());
+  const int n_accepted = static_cast<int>(accepted_z_meas.size());
 
   if (n_accepted == 0) {
     return;
   }
 
-  Eigen::VectorXd z_pred =
-      Eigen::VectorXd::Zero(2 * n_accepted);
+  Eigen::VectorXd z_pred = Eigen::VectorXd::Zero(2 * n_accepted);
 
-  Eigen::MatrixXd Zsig =
-      Eigen::MatrixXd::Zero(2 * n_accepted, nsig_);
+  Eigen::MatrixXd Zsig = Eigen::MatrixXd::Zero(2 * n_accepted, nsig_);
 
-  Eigen::MatrixXd R =
-      Eigen::MatrixXd::Zero(
-          2 * n_accepted,
-          2 * n_accepted);
+  Eigen::MatrixXd R = Eigen::MatrixXd::Zero(2 * n_accepted, 2 * n_accepted);
 
-  Eigen::VectorXd nu =
-      Eigen::VectorXd::Zero(2 * n_accepted);
+  Eigen::VectorXd nu = Eigen::VectorXd::Zero(2 * n_accepted);
 
   for (int a = 0; a < n_accepted; ++a) {
-    z_pred.segment<2>(2 * a) =
-        accepted_z_pred[a];
+    z_pred.segment<2>(2 * a) = accepted_z_pred[a];
 
-    Zsig.block(2 * a, 0, 2, nsig_) =
-        accepted_Zsig[a];
+    Zsig.block(2 * a, 0, 2, nsig_) = accepted_Zsig[a];
 
-    R.block<2, 2>(2 * a, 2 * a) =
-        Rk_;
+    R.block<2, 2>(2 * a, 2 * a) = Rk_;
 
-    nu.segment<2>(2 * a) =
-        accepted_nu[a];
+    nu.segment<2>(2 * a) = accepted_nu[a];
   }
 
-  Eigen::MatrixXd S =
-      Eigen::MatrixXd::Zero(
-          2 * n_accepted,
-          2 * n_accepted);
+  Eigen::MatrixXd S = Eigen::MatrixXd::Zero(2 * n_accepted, 2 * n_accepted);
 
-  Eigen::MatrixXd Pxz =
-      Eigen::MatrixXd::Zero(
-          nx_,
-          2 * n_accepted);
+  Eigen::MatrixXd Pxz = Eigen::MatrixXd::Zero(nx_, 2 * n_accepted);
 
   for (int i = 0; i < nsig_; ++i) {
-    Eigen::VectorXd dz =
-        Zsig.col(i) - z_pred;
+    Eigen::VectorXd dz = Zsig.col(i) - z_pred;
 
     for (int a = 0; a < n_accepted; ++a) {
-      dz(2 * a + 1) =
-          wrapAngle(dz(2 * a + 1));
+      dz(2 * a + 1) = wrapAngle(dz(2 * a + 1));
     }
 
-    Eigen::VectorXd dx =
-        xsig_pred_[i] - xk_;
+    Eigen::VectorXd dx = xsig_pred_[i] - xk_;
 
     dx(2) = wrapAngle(dx(2));
 
@@ -514,8 +460,7 @@ void UnscentedKF<ModelT>::update(
   }
 
   // K = Pxz S^-1 without explicitly forming S^-1.
-  Eigen::MatrixXd K =
-      ldlt.solve(Pxz.transpose()).transpose();
+  Eigen::MatrixXd K = ldlt.solve(Pxz.transpose()).transpose();
 
   if (!K.allFinite()) {
     ROS_WARN("UnscentedKF: non-finite Kalman gain");
@@ -535,15 +480,12 @@ void UnscentedKF<ModelT>::update(
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::setProcessNoise(
-    const Eigen::MatrixXd &Q) {
+void UnscentedKF<ModelT>::setProcessNoise(const Eigen::MatrixXd &Q) {
 
-  if (Q.rows() != Qk_.rows() ||
-      Q.cols() != Qk_.cols()) {
+  if (Q.rows() != Qk_.rows() || Q.cols() != Qk_.cols()) {
 
-    ROS_ERROR(
-        "UnscentedKF::setProcessNoise: expected %ld x %ld, got %ld x %ld",
-        Qk_.rows(), Qk_.cols(), Q.rows(), Q.cols());
+    ROS_ERROR("UnscentedKF::setProcessNoise: expected %ld x %ld, got %ld x %ld",
+              Qk_.rows(), Qk_.cols(), Q.rows(), Q.cols());
 
     return;
   }
@@ -553,95 +495,60 @@ void UnscentedKF<ModelT>::setProcessNoise(
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::setMeasurementNoise(
-    const Eigen::Matrix2d &R) {
+void UnscentedKF<ModelT>::setMeasurementNoise(const Eigen::Matrix2d &R) {
 
   Rk_ = 0.5 * (R + R.transpose());
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::setMahalanobisThreshold(
-    double threshold) {
+void UnscentedKF<ModelT>::setMahalanobisThreshold(double threshold) {
 
-  if (std::isfinite(threshold) &&
-      threshold > 0.0) {
+  if (std::isfinite(threshold) && threshold > 0.0) {
 
     mahalanobis_thresh_ = threshold;
   }
 }
 
-template <class ModelT>
-void UnscentedKF<ModelT>::logCovariance() {
+template <class ModelT> void UnscentedKF<ModelT>::logCovariance() {
   if (!cov_log_.is_open()) {
     return;
   }
 
-  const double t =
-      ros::Time::now().toSec();
+  const double t = ros::Time::now().toSec();
 
-  cov_log_
-      << std::fixed
-      << std::setprecision(9)
-      << t << ","
-      << Pk_(0, 0) << ","
-      << Pk_(0, 1) << ","
-      << Pk_(0, 2) << ","
-      << Pk_(1, 1) << ","
-      << Pk_(1, 2) << ","
-      << Pk_(2, 2) << "\n";
+  cov_log_ << std::fixed << std::setprecision(9) << t << "," << Pk_(0, 0) << ","
+           << Pk_(0, 1) << "," << Pk_(0, 2) << "," << Pk_(1, 1) << ","
+           << Pk_(1, 2) << "," << Pk_(2, 2) << "\n";
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::logNIS(
-    int landmark_id,
-    double nis,
-    bool accepted) {
+void UnscentedKF<ModelT>::logNIS(int landmark_id, double nis, bool accepted) {
 
   if (!nis_log_.is_open()) {
     return;
   }
 
-  const double t =
-      ros::Time::now().toSec();
+  const double t = ros::Time::now().toSec();
 
-  nis_log_
-      << std::fixed
-      << std::setprecision(9)
-      << t << ","
-      << landmark_id << ","
-      << nis << ","
-      << (accepted ? 1 : 0)
-      << "\n";
+  nis_log_ << std::fixed << std::setprecision(9) << t << "," << landmark_id
+           << "," << nis << "," << (accepted ? 1 : 0) << "\n";
 }
 
 template <class ModelT>
-void UnscentedKF<ModelT>::log(
-    double x,
-    double y,
-    double theta) {
+void UnscentedKF<ModelT>::log(double x, double y, double theta) {
 
   if (!xy_log_.is_open()) {
     return;
   }
 
-  const double t =
-      ros::Time::now().toSec();
+  const double t = ros::Time::now().toSec();
 
-  xy_log_
-      << std::fixed
-      << std::setprecision(9)
-      << t << ","
-      << x << ","
-      << y << ","
-      << theta << ","
-      << xk_(0) << ","
-      << xk_(1) << ","
-      << xk_(2) << "\n";
+  xy_log_ << std::fixed << std::setprecision(9) << t << "," << x << "," << y
+          << "," << theta << "," << xk_(0) << "," << xk_(1) << "," << xk_(2)
+          << "\n";
 }
 
-template <class ModelT>
-double UnscentedKF<ModelT>::wrapAngle(
-    double angle) {
+template <class ModelT> double UnscentedKF<ModelT>::wrapAngle(double angle) {
 
   while (angle > M_PI) {
     angle -= 2.0 * M_PI;
