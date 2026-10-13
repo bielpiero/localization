@@ -41,13 +41,13 @@ UnscentedKF<ModelT>::UnscentedKF(const std::vector<Landmark> &arucoMarkers,
   // NOTE: the final values must be calibrated separately for incremental
   // and velocity inputs because their units are different.
   Qk_ = Eigen::MatrixXd::Zero(nv_, nv_);
-  Qk_(0, 0) = 0.0025;
-  Qk_(1, 1) = 0.005;
+  Qk_(0, 0) = 2.5e-5;
+  Qk_(1, 1) = 1.0e-4;
 
   // Measurement covariance [range, bearing].
   Rk_.setZero();
-  Rk_(0, 0) = 0.5;
-  Rk_(1, 1) = 0.1;
+  Rk_(0, 0) = 0.0025;
+  Rk_(1, 1) = 0.0012;
 
   na_ = nx_ + nv_;
   nsig_ = 2 * na_ + 1;
