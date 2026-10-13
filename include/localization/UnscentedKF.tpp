@@ -37,13 +37,6 @@ UnscentedKF<ModelT>::UnscentedKF(const std::vector<Landmark> &arucoMarkers,
   Pk_(1, 1) = 0.025;
   Pk_(2, 2) = 0.01;
 
-  // Process covariance in the MODEL INPUT space.
-  // NOTE: the final values must be calibrated separately for incremental
-  // and velocity inputs because their units are different.
-  Qk_ = Eigen::MatrixXd::Zero(nv_, nv_);
-  Qk_(0, 0) = 2.5e-5;
-  Qk_(1, 1) = 1.0e-4;
-
   // Measurement covariance [range, bearing].
   Rk_.setZero();
   Rk_(0, 0) = 0.0025;
@@ -145,6 +138,7 @@ void UnscentedKF<ModelT>::setInput(const Eigen::VectorXd &input, double dt) {
 
   uk_ = input;
   dt_ = dt;
+  Qk_ = model_->Qk(dt);
   has_new_input_ = true;
 }
 

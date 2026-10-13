@@ -36,10 +36,6 @@ ExtendedKF<ModelT>::ExtendedKF(const std::vector<Landmark> &arucoMarkers,
   Pk_(1, 1) = 0.025;
   Pk_(2, 2) = 0.01;
 
-  Qk_ = Eigen::MatrixXd::Zero(nu, nu);
-  Qk_(0, 0) = 2.5e-5;
-  Qk_(1, 1) = 1.0e-4;
-
   Rk_.setZero();
   Rk_(0, 0) = 0.0025;
   Rk_(1, 1) = 0.0012;
@@ -117,6 +113,7 @@ void ExtendedKF<ModelT>::setInput(const Eigen::VectorXd &input, double dt) {
 
   uk_ = input;
   dt_ = dt;
+  Qk_ = model_->Qk(dt);
   has_new_input_ = true;
 }
 

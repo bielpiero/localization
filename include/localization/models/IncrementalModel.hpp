@@ -97,6 +97,15 @@ public:
     return G;
   }
 
+  Eigen::MatrixXd Qk(double /*dt*/) const override {
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(2, 2);
+
+    Q(0, 0) = 2.5e-5; // sigma_Delta_d^2
+    Q(1, 1) = 1.0e-4; // sigma_Delta_theta^2
+
+    return Q;
+  }
+
 private:
   virtual void update(const Eigen::VectorXd &input) override {
 

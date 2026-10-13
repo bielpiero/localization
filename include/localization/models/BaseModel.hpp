@@ -23,6 +23,8 @@ public:
 
   size_t delta_size() const { return delta_.size(); }
 
+  virtual Eigen::MatrixXd Qk(double dt) const = 0;
+
   virtual Eigen::MatrixXd stateJacobian(const Eigen::VectorXd &state,
                                         const Eigen::VectorXd &input,
                                         double dt = 0.001) const = 0;

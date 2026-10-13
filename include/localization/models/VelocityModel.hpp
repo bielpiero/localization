@@ -103,6 +103,20 @@ public:
     return G;
   }
 
+  Eigen::MatrixXd Qk(double dt) const override {
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(2, 2);
+
+    if (dt <= 1e-6)
+      return Q;
+
+    const double dt2 = dt * dt;
+
+    Q(0, 0) = 2.5e-5 / dt2;
+    Q(1, 1) = 1.0e-4 / dt2;
+
+    return Q;
+  }
+
 protected:
   virtual void update(const Eigen::VectorXd &input) override {
     delta_(0) = input(0); // v [m/s]
