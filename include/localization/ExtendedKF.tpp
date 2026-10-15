@@ -37,8 +37,8 @@ ExtendedKF<ModelT>::ExtendedKF(const std::vector<Landmark> &arucoMarkers,
   Pk_(2, 2) = 0.01;
 
   Rk_.setZero();
-  Rk_(0, 0) = 0.0025;
-  Rk_(1, 1) = 0.0012;
+  Rk_(0, 0) = 0.01;
+  Rk_(1, 1) = 0.0049;
 
   instance_name_ = instance_name.empty() ? std::string(typeid(ModelT).name())
                                          : instance_name;
