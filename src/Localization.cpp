@@ -282,7 +282,7 @@ void Localization::arucoCallback(
       continue;
     }
 
-    const double bearing = theta_sign_ * (pwid.theta + theta_offset_);
+    const double bearing = pwid.theta;
 
     if (!std::isfinite(bearing)) {
       ROS_WARN("Ignoring invalid bearing for marker ID %u", pwid.id);
