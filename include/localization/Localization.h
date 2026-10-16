@@ -20,21 +20,16 @@ public:
   explicit Localization(ros::NodeHandle &nh);
 
 private:
-  bool loadLandmarksFromYAML(
-      const std::string &path,
-      std::vector<Landmark> &out_landmarks);
+  bool loadLandmarksFromYAML(const std::string &path,
+                             std::vector<Landmark> &out_landmarks);
 
-  void poseCallback(
-      const geometry_msgs::Pose2D::ConstPtr &msg);
+  void poseCallback(const geometry_msgs::Pose2D::ConstPtr &msg);
 
-  void incrementsCallback(
-      const canusb::KinematicModelIncrement::ConstPtr &msg);
+  void incrementsCallback(const canusb::KinematicModelIncrement::ConstPtr &msg);
 
-  void speedsCallback(
-      const geometry_msgs::TwistStamped::ConstPtr &msg);
+  void speedsCallback(const geometry_msgs::TwistStamped::ConstPtr &msg);
 
-  void arucoCallback(
-      const aruco_detector::ArucoMarkers::ConstPtr &msg);
+  void arucoCallback(const aruco_detector::ArucoMarkers::ConstPtr &msg);
 
   void publishFilteredPoses();
 
@@ -63,10 +58,6 @@ private:
 
   bool has_last_increment_time_;
   bool has_last_speed_time_;
-
-  double camera_height_;
-  double theta_offset_;
-  double theta_sign_;
 };
 
 #endif

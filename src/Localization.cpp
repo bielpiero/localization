@@ -4,8 +4,8 @@
 #include "localization/models/IncrementalModel.hpp"
 #include "localization/models/VelocityModel.hpp"
 
-#include <geometry_msgs/TwistStamped.h>
 #include <cmath>
+#include <geometry_msgs/TwistStamped.h>
 
 Localization::Localization(ros::NodeHandle &nh)
     : nh_(nh), has_last_increment_time_(false), has_last_speed_time_(false) {
@@ -58,32 +58,17 @@ Localization::Localization(ros::NodeHandle &nh)
   // --------------------------------------------------------------------------
   // Four estimators
   // --------------------------------------------------------------------------
-  ips_ukf_inc_ =
-      std::make_shared<UnscentedKF<IncrementalModel>>(landmarks_, init_pose,
-                                                       "ukf_incremental");
+  ips_ukf_inc_ = std::make_shared<UnscentedKF<IncrementalModel>>(
+      landmarks_, init_pose, "ukf_incremental");
 
-  ips_ukf_vel_ =
-      std::make_shared<UnscentedKF<VelocityModel>>(landmarks_, init_pose,
-                                                    "ukf_velocity");
+  ips_ukf_vel_ = std::make_shared<UnscentedKF<VelocityModel>>(
+      landmarks_, init_pose, "ukf_velocity");
 
-  ips_ekf_inc_ =
-      std::make_shared<ExtendedKF<IncrementalModel>>(landmarks_, init_pose,
-                                                      "ekf_incremental");
+  ips_ekf_inc_ = std::make_shared<ExtendedKF<IncrementalModel>>(
+      landmarks_, init_pose, "ekf_incremental");
 
-  ips_ekf_vel_ =
-      std::make_shared<ExtendedKF<VelocityModel>>(landmarks_, init_pose,
-                                                   "ekf_velocity");
-
-  // --------------------------------------------------------------------------
-  // Measurement parameters
-  // --------------------------------------------------------------------------
-  pnh.param("camera_height", camera_height_, 0.86);
-  pnh.param("theta_offset", theta_offset_, 0.0);
-  pnh.param("theta_sign", theta_sign_, 1.0);
-
-  ROS_INFO("Parameter camera_height = %.3f", camera_height_);
-  ROS_INFO("theta_offset = %.6f, theta_sign = %.1f", theta_offset_,
-           theta_sign_);
+  ips_ekf_vel_ = std::make_shared<ExtendedKF<VelocityModel>>(
+      landmarks_, init_pose, "ekf_velocity");
 
   // --------------------------------------------------------------------------
   // Subscribers
