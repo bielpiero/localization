@@ -39,8 +39,8 @@ UnscentedKF<ModelT>::UnscentedKF(const std::vector<Landmark> &arucoMarkers,
 
   // Measurement covariance [range, bearing].
   Rk_.setZero();
-  Rk_(0, 0) = 0.0064;
-  Rk_(1, 1) = 0.0027;
+  Rk_(0, 0) = 0.0009;
+  Rk_(1, 1) = 0.0003046;
 
   na_ = nx_ + nv_;
   nsig_ = 2 * na_ + 1;
