@@ -93,7 +93,8 @@ void ExtendedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
 
     const double elapsed_ms = TimingLogger::nowMs() - start_ms;
 
-    TimingLogger::log(instance_name_ + "_prediction", elapsed_ms);
+    TimingLogger::log("/home/sara/localization_timing.csv",
+                      instance_name_ + "_prediction", elapsed_ms);
 
     has_new_input_ = false;
   }
@@ -105,7 +106,8 @@ void ExtendedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
 
     const double elapsed_ms = TimingLogger::nowMs() - start_ms;
 
-    TimingLogger::log(instance_name_ + "_correction", elapsed_ms);
+    TimingLogger::log("/home/sara/localization_timing.csv",
+                      instance_name_ + "_correction", elapsed_ms);
   }
 
   logCovariance();

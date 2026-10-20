@@ -17,22 +17,18 @@ public:
         .count();
   }
 
-  static void log(const std::string &operation, double duration_ms) {
-    static std::mutex mutex;
-    static std::ofstream file("/home/sara/localization_timing.csv",
-                              std::ios::out);
+  static void log(const std::string &filename, const std::string &operation,
+                  double duration_ms) {
 
-    static bool header_written = false;
+    static std::mutex mutex;
 
     std::lock_guard<std::mutex> lock(mutex);
 
-    if (!header_written) {
-      file << "operation,duration_ms\n";
-      header_written = true;
-    }
+    std::ofstream file(filename, std::ios::app);
 
     file << operation << "," << std::fixed << std::setprecision(9)
          << duration_ms << "\n";
   }
 };
+
 #endif
