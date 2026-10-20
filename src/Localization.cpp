@@ -308,12 +308,67 @@ void Localization::arucoCallback(
 
   publishFilteredPoses();
 
+  // --------------------------------------------------------------------------
+  // Record the instant at which the visual measurement has already been
+  // incorporated into all four estimators and the filtered poses published.
+  // --------------------------------------------------------------------------
+  const ros::Time update_done_ros = ros::Time::now();
+  const ros::WallTime update_done_wall = ros::WallTime::now();
+
+  // --------------------------------------------------------------------------
+  // End-to-end visual measurement-to-update latency.
+  //
+  // msg->header.stamp must contain the timestamp of the ORIGINAL RGB image,
+  // copied by the ArUco detector with:
+  //
+  //   markers.header = msg->header;
+  //
+  // This latency therefore includes image transport, ArUco processing,
+  // publication of /aruco_markers, ROS transport and estimator correction.
+  // --------------------------------------------------------------------------
+  if (!msg->header.stamp.isZero()) {
+
+    const double visual_latency_ms =
+        (update_done_ros - msg->header.stamp).toSec() * 1000.0;
+
+    if (std::isfinite(visual_latency_ms) && visual_latency_ms >= 0.0) {
+
+      TimingLogger::log("/home/sara/localization_timing.csv",
+                        "visual_measurement_to_update_latency",
+                        visual_latency_ms);
+
+    } else {
+
+      ROS_WARN_THROTTLE(2.0,
+                        "Invalid visual measurement-to-update latency: %.3f ms",
+                        visual_latency_ms);
+    }
+
+  } else {
+
+    ROS_WARN_THROTTLE(
+        2.0, "ArucoMarkers header timestamp is zero. "
+             "Visual measurement-to-update latency cannot be computed.");
+  }
+
+  // --------------------------------------------------------------------------
+  // Complete localisation callback execution time.
+  //
+  // This measures only the time spent inside this callback:
+  // measurement preparation + four estimator corrections + publication.
+  // --------------------------------------------------------------------------
   const double elapsed_ms =
-      (ros::WallTime::now() - computation_start).toSec() * 1000.0;
+      (update_done_wall - computation_start).toSec() * 1000.0;
 
   TimingLogger::log("/home/sara/localization_timing.csv",
                     "complete_localisation_callback", elapsed_ms);
-  ROS_DEBUG("Four-filter ArUco update time: %.3f ms", elapsed_ms);
+
+  ROS_DEBUG("Four-filter ArUco update time: %.3f ms | "
+            "Visual measurement-to-update latency: %.3f ms",
+            elapsed_ms,
+            msg->header.stamp.isZero()
+                ? -1.0
+                : (update_done_ros - msg->header.stamp).toSec() * 1000.0);
 }
 
 // =============================================================================
