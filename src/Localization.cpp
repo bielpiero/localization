@@ -311,6 +311,7 @@ void Localization::arucoCallback(
   const double elapsed_ms =
       (ros::WallTime::now() - computation_start).toSec() * 1000.0;
 
+  TimingLogger::log("complete_localisation_callback", elapsed_ms);
   ROS_DEBUG("Four-filter ArUco update time: %.3f ms", elapsed_ms);
 }
 
