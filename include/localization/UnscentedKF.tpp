@@ -1,3 +1,4 @@
+#include "localization/TimingLogger.hpp"
 #include <cmath>
 #include <iomanip>
 #include <stdexcept>
@@ -110,13 +111,27 @@ template <class ModelT> UnscentedKF<ModelT>::~UnscentedKF() {
 
 template <class ModelT>
 void UnscentedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
+
   if (has_new_input_) {
+    const double start_ms = TimingLogger::nowMs();
+
     prediction();
+
+    const double elapsed_ms = TimingLogger::nowMs() - start_ms;
+
+    TimingLogger::log(instance_name_ + "_prediction", elapsed_ms);
+
     has_new_input_ = false;
   }
 
   if (!meas.empty()) {
+    const double start_ms = TimingLogger::nowMs();
+
     update(meas);
+
+    const double elapsed_ms = TimingLogger::nowMs() - start_ms;
+
+    TimingLogger::log(instance_name_ + "_correction", elapsed_ms);
   }
 
   logCovariance();
