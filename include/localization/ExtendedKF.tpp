@@ -175,7 +175,7 @@ template <class ModelT> void ExtendedKF<ModelT>::prediction() {
 
 template <class ModelT>
 void ExtendedKF<ModelT>::update(const std::vector<Landmark> &meas) {
-
+  clearAcceptedMarkers();
   const int nx = static_cast<int>(xk_.size());
 
   std::vector<Eigen::Vector2d> accepted_z;
@@ -264,6 +264,7 @@ void ExtendedKF<ModelT>::update(const std::vector<Landmark> &meas) {
       continue;
     }
 
+    addAcceptedMarker(measurement.id());
     accepted_z.push_back(z);
     accepted_h.push_back(h);
     accepted_H.push_back(H);

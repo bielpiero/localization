@@ -303,7 +303,7 @@ void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
   if (meas.empty()) {
     return;
   }
-
+  clearAcceptedMarkers();
   // If a visual correction already changed (xk_, Pk_) and no prediction
   // occurred afterwards, the previous sigma points are stale.
   if (!sigma_points_valid_ && !regenerateStateSigmaPoints()) {
@@ -411,6 +411,7 @@ void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
       continue;
     }
 
+    addAcceptedMarker(measurement.id());
     accepted_z_meas.push_back(z_meas_j);
     accepted_z_pred.push_back(z_pred_j);
     accepted_Zsig.push_back(Zsig_j);

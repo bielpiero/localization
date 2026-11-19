@@ -5,6 +5,7 @@
 
 #include <aruco_detector/ArucoMarkers.h>
 #include <canusb/KinematicModelIncrement.h>
+#include <localization/AcceptedMarkers.h>
 
 #include <geometry_msgs/Pose2D.h>
 #include <geometry_msgs/TwistStamped.h>
@@ -45,6 +46,11 @@ private:
   ros::Publisher pose_pub_ukf_vel_;
   ros::Publisher pose_pub_ekf_inc_;
   ros::Publisher pose_pub_ekf_vel_;
+
+  ros::Publisher accepted_pub_ukf_inc_;
+  ros::Publisher accepted_pub_ukf_vel_;
+  ros::Publisher accepted_pub_ekf_inc_;
+  ros::Publisher accepted_pub_ekf_vel_;
 
   std::shared_ptr<IPositioningSystem> ips_ukf_inc_;
   std::shared_ptr<IPositioningSystem> ips_ukf_vel_;

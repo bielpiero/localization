@@ -105,6 +105,18 @@ Localization::Localization(ros::NodeHandle &nh)
   pose_pub_ekf_vel_ =
       nh_.advertise<geometry_msgs::Pose2D>("/pose/filtered/ekf/velocity", 10);
 
+  accepted_pub_ukf_inc_ = nh_.advertise<localization::AcceptedMarkers>(
+      "/aruco/accepted/ukf/incremental", 10);
+
+  accepted_pub_ukf_vel_ = nh_.advertise<localization::AcceptedMarkers>(
+      "/aruco/accepted/ukf/velocity", 10);
+
+  accepted_pub_ekf_inc_ = nh_.advertise<localization::AcceptedMarkers>(
+      "/aruco/accepted/ekf/incremental", 10);
+
+  accepted_pub_ekf_vel_ = nh_.advertise<localization::AcceptedMarkers>(
+      "/aruco/accepted/ekf/velocity", 10);
+
   publishFilteredPoses();
 
   ROS_INFO("Localization initialized.");
@@ -305,6 +317,21 @@ void Localization::arucoCallback(
 
   ips_ekf_inc_->execute(measurements);
   ips_ekf_vel_->execute(measurements);
+
+  localization::AcceptedMarkers accepted;
+  accepted.header = msg->header;
+
+  accepted.ids = ips_ukf_inc_->getAcceptedMarkers();
+  accepted_pub_ukf_inc_.publish(accepted);
+
+  accepted.ids = ips_ukf_vel_->getAcceptedMarkers();
+  accepted_pub_ukf_vel_.publish(accepted);
+
+  accepted.ids = ips_ekf_inc_->getAcceptedMarkers();
+  accepted_pub_ekf_inc_.publish(accepted);
+
+  accepted.ids = ips_ekf_vel_->getAcceptedMarkers();
+  accepted_pub_ekf_vel_.publish(accepted);
 
   publishFilteredPoses();
 
