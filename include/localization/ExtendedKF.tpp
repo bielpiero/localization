@@ -98,7 +98,7 @@ void ExtendedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
 
     has_new_input_ = false;
   }
-
+  clearAcceptedMarkers();
   if (!meas.empty()) {
     const double start_ms = TimingLogger::nowMs();
 
@@ -175,7 +175,7 @@ template <class ModelT> void ExtendedKF<ModelT>::prediction() {
 
 template <class ModelT>
 void ExtendedKF<ModelT>::update(const std::vector<Landmark> &meas) {
-  clearAcceptedMarkers();
+
   const int nx = static_cast<int>(xk_.size());
 
   std::vector<Eigen::Vector2d> accepted_z;

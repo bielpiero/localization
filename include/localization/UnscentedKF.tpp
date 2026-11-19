@@ -125,6 +125,8 @@ void UnscentedKF<ModelT>::execute(const std::vector<Landmark> &meas) {
     has_new_input_ = false;
   }
 
+  clearAcceptedMarkers();
+
   if (!meas.empty()) {
     const double start_ms = TimingLogger::nowMs();
 
@@ -303,7 +305,7 @@ void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
   if (meas.empty()) {
     return;
   }
-  clearAcceptedMarkers();
+
   // If a visual correction already changed (xk_, Pk_) and no prediction
   // occurred afterwards, the previous sigma points are stale.
   if (!sigma_points_valid_ && !regenerateStateSigmaPoints()) {
@@ -462,30 +464,64 @@ void UnscentedKF<ModelT>::update(const std::vector<Landmark> &meas) {
   }
 
   S += R;
-  S = 0.5 * (S + S.transpose());
+  S = (0.5 * (S + S.transpose())).eval();
 
-  Eigen::LDLT<Eigen::MatrixXd> ldlt(S);
+  if (!S.allFinite()) {
+    ROS_WARN("UnscentedKF: non-finite innovation covariance");
+    return;
+  }
 
-  if (ldlt.info() != Eigen::Success) {
-    ROS_WARN("UnscentedKF: joint innovation covariance decomposition failed");
+  // Innovation covariance must be positive definite.
+  Eigen::LLT<Eigen::MatrixXd> llt_S(S);
+
+  if (llt_S.info() != Eigen::Success) {
+    ROS_WARN("UnscentedKF: invalid innovation covariance");
     return;
   }
 
   // K = Pxz S^-1 without explicitly forming S^-1.
-  Eigen::MatrixXd K = ldlt.solve(Pxz.transpose()).transpose();
+  Eigen::MatrixXd K = llt_S.solve(Pxz.transpose()).transpose();
 
   if (!K.allFinite()) {
     ROS_WARN("UnscentedKF: non-finite Kalman gain");
     return;
   }
 
-  xk_ += K * nu;
-  xk_(2) = wrapAngle(xk_(2));
+  // Compute candidate posterior covariance.
+  Eigen::MatrixXd P_candidate = Pk_ - K * S * K.transpose();
 
-  Pk_ -= K * S * K.transpose();
+  P_candidate = (0.5 * (P_candidate + P_candidate.transpose())).eval();
 
-  Pk_ = 0.5 * (Pk_ + Pk_.transpose());
-  Pk_ += 1e-12 * Eigen::MatrixXd::Identity(nx_, nx_);
+  if (!P_candidate.allFinite()) {
+    ROS_WARN("UnscentedKF: non-finite posterior covariance");
+    return;
+  }
+
+  // Verify positive definiteness before accepting correction.
+  Eigen::LLT<Eigen::MatrixXd> llt_P(P_candidate);
+
+  if (llt_P.info() != Eigen::Success) {
+    ROS_WARN("UnscentedKF: correction rejected. "
+             "Posterior covariance is not positive definite");
+    return;
+  }
+
+  // Compute candidate posterior state.
+  Eigen::VectorXd x_candidate = xk_ + K * nu;
+
+  if (!x_candidate.allFinite()) {
+    ROS_WARN("UnscentedKF: non-finite posterior state");
+    return;
+  }
+
+  x_candidate(2) = wrapAngle(x_candidate(2));
+
+  // Numerical regularization.
+  P_candidate += 1e-12 * Eigen::MatrixXd::Identity(nx_, nx_);
+
+  // Commit validated correction.
+  xk_ = x_candidate;
+  Pk_ = P_candidate;
 
   // xk_ and Pk_ changed. The sigma points used above are now stale.
   sigma_points_valid_ = false;
