@@ -6,6 +6,7 @@
 
 #include <eigen3/Eigen/Dense>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 class IPositioningSystem {
