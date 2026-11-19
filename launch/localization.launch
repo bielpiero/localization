@@ -13,10 +13,10 @@
   <!-- Esperar un poco antes de lanzar el detector (opcional) -->
   <group ns="aruco">
     <node pkg="aruco_detector" type="aruco_detector" name="aruco_detector" output="screen"/>
-    <param name="camera_offset_x" value="1.193961009" />
-    <param name="camera_offset_y" value="-0.077924946" />
-    <param name="camera_pitch" value="1.006617159" />
-    <param name="camera_yaw" value="0.000" />
+    <param name="camera_offset_x" value="1.118615832" />
+    <param name="camera_offset_y" value="-0.053052520" />
+    <param name="camera_pitch" value="0.950182319" />
+    <param name="camera_yaw" value="-0.058293761" />
     <param name="marker_length" value="0.056" />
   </group>
 
